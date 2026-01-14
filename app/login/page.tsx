@@ -21,39 +21,59 @@ export default function LoginPage() {
     });
   }, [router]);
 
+  const validate = () => {
+    const e = email.trim();
+    const p = pw;
+
+    if (!e.includes('@')) return '이메일 형식을 확인해주세요.';
+    if (p.length < 6) return '비밀번호는 6자 이상이 필요합니다.';
+    return null;
+  };
+
   const submit = async () => {
     setMsg(null);
+
+    const v = validate();
+    if (v) {
+      setMsg(v);
+      return;
+    }
+
     setLoading(true);
     try {
-      if (!email.includes('@')) {
-        setMsg('이메일 형식을 확인해주세요.');
-        return;
-      }
-      if (pw.length < 6) {
-        setMsg('비밀번호는 6자 이상이 필요합니다.');
-        return;
-      }
-
       if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password: pw,
+        // ✅ 직원 사전등록 이메일만 허용하는 서버 API로 가입 처리
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email.trim(),
+            password: pw,
+          }),
         });
-        if (error) throw error;
 
-        setMsg('✅ 가입 요청 완료! (이메일 인증을 켠 경우 메일 확인 필요)');
-        // 이메일 인증 OFF면 바로 로그인 세션이 생김 → 홈으로 이동 가능
-        const { data } = await supabase.auth.getSession();
-        if (data.session) router.replace('/');
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password: pw,
-        });
-        if (error) throw error;
+        const json = await res.json().catch(() => ({}));
 
-        router.replace('/');
+        if (!res.ok || !json?.ok) {
+          setMsg(json?.message ?? '회원가입에 실패했습니다.');
+          return;
+        }
+
+        setMsg(json?.message ?? '인증 메일을 발송했습니다. 메일함을 확인해 주세요.');
+
+        // ✅ 이메일 인증을 켠 경우: 여기서 세션이 생기지 않는 게 정상
+        // (인증 링크 클릭 후 로그인으로 진행)
+        return;
       }
+
+      // 로그인
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: pw,
+      });
+      if (error) throw error;
+
+      router.replace('/');
     } catch (e: any) {
       setMsg(e?.message ?? '처리 중 오류가 발생했습니다.');
     } finally {
@@ -65,9 +85,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
       <div className="w-full max-w-sm rounded-2xl bg-white/5 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.1)]">
         <div className="font-mono text-xs tracking-widest text-white/70">OFFICE</div>
-        <h1 className="mt-2 text-2xl font-bold">
-          {mode === 'login' ? '로그인' : '회원가입'}
-        </h1>
+        <h1 className="mt-2 text-2xl font-bold">{mode === 'login' ? '로그인' : '회원가입'}</h1>
 
         <div className="mt-6 space-y-3">
           <input
@@ -76,6 +94,7 @@ export default function LoginPage() {
             placeholder="이메일"
             className="w-full rounded-xl bg-black/40 px-4 py-3 outline-none ring-1 ring-white/10 focus:ring-white/25"
             autoComplete="email"
+            inputMode="email"
           />
           <input
             value={pw}
@@ -109,6 +128,13 @@ export default function LoginPage() {
           >
             {mode === 'login' ? '처음이신가요? 회원가입' : '이미 계정이 있나요? 로그인'}
           </button>
+
+          {mode === 'signup' && (
+            <div className="pt-2 text-xs text-white/50 leading-relaxed">
+              • 등록된 직원 이메일만 회원가입 가능합니다.<br />
+              • 가입 후 이메일 인증을 완료한 뒤 로그인해 주세요.
+            </div>
+          )}
         </div>
       </div>
     </div>
