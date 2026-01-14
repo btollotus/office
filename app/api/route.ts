@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '../../_utils';
+import { requireAdmin } from '../_utils';
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const guard = await requireAdmin();
