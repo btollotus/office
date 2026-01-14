@@ -15,7 +15,8 @@ function isAdminEmail(email: string | null | undefined) {
 }
 
 export default async function AdminEmployeesPage() {
-  const supabase = createSupabaseServer();
+  // ✅ 중요: createSupabaseServer()는 async 이므로 await 필요
+  const supabase = await createSupabaseServer();
 
   // ✅ 서버에서 현재 로그인 유저 확인 (쿠키 기반)
   const { data, error } = await supabase.auth.getUser();
@@ -37,21 +38,35 @@ export default async function AdminEmployeesPage() {
           <p className="text-white/80">
             이 페이지는 <span className="text-emerald-300">관리자</span>만 접근할 수 있어요.
           </p>
+
+          <p className="mt-2 text-white/60 text-sm">로그인 사용자: {email ?? '없음'}</p>
+
           <p className="mt-2 text-white/60 text-sm">
-            로그인 사용자: {email ?? '없음'}
+            해결: 서버 환경변수{' '}
+            <code className="text-white/80">ADMIN_EMAILS</code>에 관리자 이메일을 쉼표로
+            등록하세요.
           </p>
+
           <p className="mt-2 text-white/60 text-sm">
-            해결: 서버 환경변수 <code className="text-white/80">ADMIN_EMAILS</code>에
-            관리자 이메일을 쉼표로 등록하세요.
+            현재 ADMIN_EMAILS:{' '}
+            <code className="text-white/80">
+              {(process.env.ADMIN_EMAILS ?? '').trim() || '(비어있음)'}
+            </code>
           </p>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-6 flex gap-2">
           <a
             href="/"
             className="inline-flex items-center rounded-xl bg-white/10 px-4 py-3 hover:bg-white/15"
           >
             홈으로
+          </a>
+          <a
+            href="/login"
+            className="inline-flex items-center rounded-xl bg-emerald-500 px-4 py-3 font-semibold text-black hover:bg-emerald-400"
+          >
+            로그인으로
           </a>
         </div>
       </div>
