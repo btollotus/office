@@ -44,7 +44,7 @@ function LoginInner() {
           setMsg(error.message);
           return;
         }
-        router.replace(next);
+        window.location.assign(next);
       } else {
         // ✅ 회원가입: 인증메일 클릭 후 /auth/callback 로 돌아오게 설정
         const origin = window.location.origin;

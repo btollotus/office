@@ -23,21 +23,31 @@ export async function middleware(req: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  const isProtected =
-    req.nextUrl.pathname.startsWith("/channels") ||
-    req.nextUrl.pathname.startsWith("/admin");
+  const path = req.nextUrl.pathname;
 
-  if (isProtected && !user) {
+  // ✅ 1) 홈(/)은 항상 channels로 보내기 (로그인 여부에 따라)
+  if (path === "/") {
     const url = req.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("next", req.nextUrl.pathname);
+    if (user) url.pathname = "/channels";
+    else {
+      url.pathname = "/login";
+      url.searchParams.set("next", "/channels");
+    }
     return NextResponse.redirect(url);
   }
 
-  // ✅ 여기서 res를 그대로 반환해야 쿠키가 갱신/동기화됨
+  // ✅ 2) 보호 라우트: channels/admin
+  const isProtected = path.startsWith("/channels") || path.startsWith("/admin");
+  if (isProtected && !user) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("next", path);
+    return NextResponse.redirect(url);
+  }
+
   return res;
 }
 
 export const config = {
-  matcher: ["/channels/:path*", "/admin/:path*", "/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/", "/channels/:path*", "/admin/:path*"],
 };
