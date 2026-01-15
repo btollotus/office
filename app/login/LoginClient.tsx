@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { createSupabaseBrowser } from '@/lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function LoginClient() {
   const router = useRouter();
@@ -16,16 +16,13 @@ export default function LoginClient() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // ✅ next 파라미터 처리
   const next = useMemo(() => searchParams.get('next') || '/', [searchParams]);
 
   useEffect(() => {
-    const run = async () => {
-      const supabase = createSupabaseBrowser();
-      const { data } = await supabase.auth.getSession();
+    // 이미 로그인 되어 있으면 next로 이동
+    supabase.auth.getSession().then(({ data }) => {
       if (data.session) router.replace(next);
-    };
-    run();
+    });
   }, [router, next]);
 
   const submit = async () => {
@@ -33,8 +30,6 @@ export default function LoginClient() {
     setLoading(true);
 
     try {
-      const supabase = createSupabaseBrowser();
-
       const e = email.trim();
       const p = pw;
 
@@ -50,10 +45,7 @@ export default function LoginClient() {
       }
 
       if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({
-          email: e,
-          password: p,
-        });
+        const { error } = await supabase.auth.signUp({ email: e, password: p });
         if (error) throw error;
 
         setMsg('✅ 가입 요청 완료! (이메일 인증이 켜져 있으면 메일 확인 필요)');
@@ -65,13 +57,9 @@ export default function LoginClient() {
           router.refresh();
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: e,
-          password: p,
-        });
+        const { error } = await supabase.auth.signInWithPassword({ email: e, password: p });
         if (error) throw error;
 
-        // ✅ 로그인 성공 시 next로
         router.replace(next);
         router.refresh();
       }
@@ -86,9 +74,7 @@ export default function LoginClient() {
     <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
       <div className="w-full max-w-sm rounded-2xl bg-white/5 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.1)]">
         <div className="font-mono text-xs tracking-widest text-white/70">OFFICE</div>
-        <h1 className="mt-2 text-2xl font-bold">
-          {mode === 'login' ? '로그인' : '회원가입'}
-        </h1>
+        <h1 className="mt-2 text-2xl font-bold">{mode === 'login' ? '로그인' : '회원가입'}</h1>
 
         <div className="mt-2 text-xs text-white/50">
           이동 대상: <span className="text-white/70">{next}</span>
