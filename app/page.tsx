@@ -1,82 +1,136 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { createClient } from "@/lib/supabase/browser";
 
-export default function Home() {
+function LoginInner() {
   const router = useRouter();
-  const [checking, setChecking] = useState(true);
-  const [signingOut, setSigningOut] = useState(false);
+  const searchParams = useSearchParams();
+
+  const supabase = useMemo(() => createClient(), []);
+
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const next = searchParams.get("next") || "/channels";
 
   useEffect(() => {
-    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) router.replace(next);
+    });
+  }, [router, next, supabase]);
 
-    // 1) 최초 세션 체크
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!mounted) return;
+  const submit = async () => {
+    setLoading(true);
+    setMsg(null);
 
-      if (error || !data.session) {
-        router.replace('/login');
+    try {
+      if (!email || !pw) {
+        setMsg("이메일/비밀번호를 입력해주세요.");
         return;
       }
 
-      setChecking(false);
-    });
+      if (mode === "login") {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password: pw,
+        });
+        if (error) {
+          setMsg(error.message);
+          return;
+        }
+        router.replace(next);
+        return;
+      }
 
-    // 2) 세션 변경(로그아웃/토큰만료 등)도 감지해서 즉시 처리
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) router.replace('/login');
-    });
+      // signup
+      const origin = window.location.origin;
+      const { error } = await supabase.auth.signUp({
+        email,
+        password: pw,
+        options: {
+          emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(
+            next
+          )}`,
+        },
+      });
 
-    return () => {
-      mounted = false;
-      authListener.subscription.unsubscribe();
-    };
-  }, [router]);
+      if (error) {
+        setMsg(error.message);
+        return;
+      }
 
-  const goChannels = () => router.push('/channels');
-
-  const onLogout = async () => {
-    if (signingOut) return;
-    setSigningOut(true);
-    try {
-      await supabase.auth.signOut();
+      setMsg("인증 메일을 보냈습니다. 메일 인증 후 돌아오세요.");
     } finally {
-      router.replace('/login');
-      setSigningOut(false);
+      setLoading(false);
     }
   };
 
-  if (checking) {
-    return (
-      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
-        <div className="font-mono text-white/70">CHECKING SESSION...</div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-zinc-950 text-white p-6">
-      <h1 className="text-2xl font-bold">OFFICE 메신저</h1>
-      <p className="mt-2 text-white/70">로그인 성공 ✅</p>
+    <div className="min-h-screen flex items-center justify-center bg-black text-white px-4">
+      <div className="w-full max-w-md rounded-2xl bg-zinc-900/40 border border-zinc-800 p-8 shadow-xl">
+        <div className="text-xs tracking-widest text-zinc-400 mb-2">OFFICE</div>
+        <div className="text-3xl font-bold mb-2">
+          {mode === "login" ? "로그인" : "회원가입"}
+        </div>
+        <div className="text-sm text-zinc-400 mb-6">
+          이동 대상: <span className="text-zinc-200">{next}</span>
+        </div>
 
-      <div className="mt-6 flex gap-3">
-        <button
-          onClick={goChannels}
-          className="rounded-xl bg-emerald-500 px-4 py-3 text-black hover:bg-emerald-400"
-        >
-          채널로 이동
-        </button>
+        <div className="space-y-3">
+          <input
+            className="w-full rounded-xl bg-black/40 border border-zinc-700 px-4 py-3 outline-none focus:border-emerald-500"
+            placeholder="이메일"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+          />
+          <input
+            className="w-full rounded-xl bg-black/40 border border-zinc-700 px-4 py-3 outline-none focus:border-emerald-500"
+            placeholder="비밀번호"
+            type="password"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+          />
 
-        <button
-          onClick={onLogout}
-          disabled={signingOut}
-          className="rounded-xl bg-white/10 px-4 py-3 hover:bg-white/15 disabled:opacity-60"
-        >
-          {signingOut ? '로그아웃 중...' : '로그아웃'}
-        </button>
+          <button
+            onClick={submit}
+            disabled={loading}
+            className="w-full rounded-xl bg-emerald-500 text-black font-bold py-3 disabled:opacity-60"
+          >
+            {loading ? "처리중..." : mode === "login" ? "로그인" : "회원가입"}
+          </button>
+
+          <button
+            onClick={() => {
+              setMsg(null);
+              setMode((m) => (m === "login" ? "signup" : "login"));
+            }}
+            className="w-full rounded-xl bg-zinc-700/50 border border-zinc-600 py-3"
+          >
+            {mode === "login" ? "처음이신가요? 회원가입" : "이미 계정이 있나요? 로그인"}
+          </button>
+
+          {msg && (
+            <div className="text-sm mt-2 text-amber-200 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
+              {msg}
+            </div>
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black" />}>
+      <LoginInner />
+    </Suspense>
   );
 }
