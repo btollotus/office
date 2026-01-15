@@ -132,3 +132,7 @@ export default function LoginPage() {
   // ✅ useSearchParams 때문에 Suspense로 감싸기
   return (
     <Suspense fallback={<div className="min-h-screen bg-black" />}>
+      <LoginInner />
+    </Suspense>
+  );
+}
