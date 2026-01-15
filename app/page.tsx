@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/browser";
+import { Suspense, useEffect, useMemo, useState } from "react";
+
 
 function LoginInner() {
   const router = useRouter();
