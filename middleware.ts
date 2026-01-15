@@ -1,52 +1,43 @@
-// middleware.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
-export async function middleware(request: NextRequest) {
-  // 기본 응답(그대로 통과)
-  let response = NextResponse.next();
+export async function middleware(req: NextRequest) {
+  let res = NextResponse.next({ request: { headers: req.headers } });
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-  // ✅ @supabase/ssr 방식: cookies는 getAll/setAll
-  const supabase = createServerClient(url, anon, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            res.cookies.set(name, value, options);
+          });
+        },
       },
-      setAll(cookies) {
-        // response에 쿠키 반영
-        cookies.forEach(({ name, value, options }) => {
-          response.cookies.set(name, value, options);
-        });
-      },
-    },
-  });
+    }
+  );
 
-  const pathname = request.nextUrl.pathname;
+  const { data: { user } } = await supabase.auth.getUser();
 
-  // ---- 보호할 경로들 ----
-  const isAdmin = pathname.startsWith('/admin');
-  const isChannels = pathname.startsWith('/channels');
+  const isProtected =
+    req.nextUrl.pathname.startsWith("/channels") ||
+    req.nextUrl.pathname.startsWith("/admin");
 
-  // 현재 로그인 유저 확인 (쿠키 기반)
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // 로그인 필요 페이지인데 로그인 안돼있으면 /login으로
-  if ((isAdmin || isChannels) && !user) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = '/login';
-    loginUrl.searchParams.set('next', pathname);
-    return NextResponse.redirect(loginUrl);
+  if (isProtected && !user) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("next", req.nextUrl.pathname);
+    return NextResponse.redirect(url);
   }
 
-  // ✅ 여기서 response 반환해야 setAll로 반영된 쿠키가 적용됩니다
-  return response;
+  // ✅ 여기서 res를 그대로 반환해야 쿠키가 갱신/동기화됨
+  return res;
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/channels/:path*'],
+  matcher: ["/channels/:path*", "/admin/:path*", "/((?!_next/static|_next/image|favicon.ico).*)"],
 };
