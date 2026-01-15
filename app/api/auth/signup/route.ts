@@ -1,15 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-function json(status: number, body: any) {
-  return new NextResponse(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
-}
+export const runtime = "nodejs";
 
-// ✅ 관리자(서버)에서만 쓰는 서비스 롤 클라이언트
-function adminSupabase() {
+function getAdminClient() {
   const url = process.env.SUPABASE_URL!;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
@@ -18,68 +12,38 @@ function adminSupabase() {
 
 export async function POST(req: Request) {
   try {
-    const { email, password, full_name, phone } = await req.json();
+    const { email, password } = await req.json();
 
     if (!email || !password) {
-      return json(400, { ok: false, error: "EMAIL_PASSWORD_REQUIRED" });
-    }
-    if (String(password).length < 6) {
-      return json(400, { ok: false, error: "PASSWORD_TOO_SHORT" });
+      return NextResponse.json({ ok: false, error: "MISSING_FIELDS" }, { status: 400 });
     }
 
-    const supabase = adminSupabase();
+    const admin = getAdminClient();
 
-    // 1) employees에 등록된 이메일인지 확인
-    const { data: emp, error: empErr } = await supabase
-      .from("employees")
-      .select("email,status")
-      .ilike("email", String(email))
-      .maybeSingle();
-
-    if (empErr) return json(500, { ok: false, error: "EMPLOYEE_LOOKUP_FAILED", detail: empErr.message });
-    if (!emp || !["pending", "active"].includes(emp.status)) {
-      return json(403, { ok: false, error: "NOT_ALLOWED_EMAIL" });
-    }
-
-    // 2) Auth 사용자 생성(이메일 인증 없이 바로 confirmed로 생성)
-    const { data: created, error: createErr } = await supabase.auth.admin.createUser({
-      email: String(email).toLowerCase(),
-      password: String(password),
-      email_confirm: true,
-      user_metadata: {
-        display_name: full_name ?? String(email).split("@")[0],
-        phone: phone ?? null,
-      },
+    // ✅ Service Role로 유저 생성 (이 단계가 405가 아니라 200/4xx/5xx로 바뀌어야 정상)
+    const { data, error } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true, // 대시보드에서 Auto Confirm 체크한 효과
     });
 
-    if (createErr) {
-      return json(500, { ok: false, error: "CREATE_USER_FAILED", detail: createErr.message });
+    if (error) {
+      return NextResponse.json(
+        { ok: false, error: "CREATE_USER_FAILED", detail: error.message },
+        { status: 400 }
+      );
     }
 
-    // 3) employees에 profile_id 연결 + active 전환
-    const uid = created.user?.id ?? null;
-    if (uid) {
-      const { error: upErr } = await supabase
-        .from("employees")
-        .update({
-          profile_id: uid,
-          status: emp.status === "disabled" ? "disabled" : "active",
-        })
-        .ilike("email", String(email));
-
-      if (upErr) {
-        // 사용자 생성은 됐는데 직원 테이블 업데이트가 실패한 경우
-        return json(500, { ok: false, error: "EMPLOYEE_UPDATE_FAILED", detail: upErr.message });
-      }
-    }
-
-    return json(200, { ok: true });
+    return NextResponse.json({ ok: true, user_id: data.user?.id ?? null }, { status: 200 });
   } catch (e: any) {
-    return json(500, { ok: false, error: "SERVER_ERROR", detail: String(e?.message ?? e) });
+    return NextResponse.json(
+      { ok: false, error: "SERVER_ERROR", detail: String(e?.message ?? e) },
+      { status: 500 }
+    );
   }
 }
 
-// ✅ GET으로 때리면 405 대신 안내 JSON 주기
-export async function GET() {
-  return json(405, { ok: false, error: "METHOD_NOT_ALLOWED", allow: ["POST"] });
+// (가끔 브라우저가 preflight OPTIONS를 보내는 환경에서 필요)
+export async function OPTIONS() {
+  return NextResponse.json({ ok: true }, { status: 200 });
 }
